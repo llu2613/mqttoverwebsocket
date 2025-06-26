@@ -126,7 +126,8 @@
 
         // WebSocket connection
         connectWsBtn.addEventListener('click', () => {
-            ws = new WebSocket(`ws://${window.location.hostname}:3000?connid=${connectionId}&seckey=${Date.now().toString()}`);
+            // ws = new WebSocket(`ws://${window.location.hostname}:3000?connid=${connectionId}&seckey=${Date.now().toString()}`);
+            ws = new WebSocket(`ws://${window.location.host}?connid=${connectionId}&seckey=${Date.now().toString()}`);
 
             ws.onopen = () => {
                 wsStatus.textContent = 'Status: Connected';
@@ -235,7 +236,6 @@
 
         // Messages Clear
         messagesClearBtn.addEventListener('click', () => {
-            console.info('1111111111')
             clearMessages();
         });
 
@@ -277,7 +277,6 @@
 
         // Clear message from UI
         function clearMessages() {
-            console.info('22222222222')
             while (messagesDiv.firstChild) {
                 messagesDiv.removeChild(messagesDiv.firstChild);
             }
