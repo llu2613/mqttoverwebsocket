@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message MQTTConfig {
+  string host = 1;
+  string port = 2;
+  string username = 3;
+  string password = 4;
+}
+
+message DeviceConfig {
+  string deviceId = 1;
+  string basicTopic = 2;
+  string token = 3;
+  MQTTConfig mqttConfig = 4;
+}

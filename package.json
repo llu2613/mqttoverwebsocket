@@ -16,8 +16,10 @@
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "lru-cache": "^11.1.0",
     "morgan": "^1.10.0",
     "mqtt": "^5.13.1",
+    "protobufjs": "^7.5.3",
     "ws": "^8.18.2"
   },
   "devDependencies": {

@@ -6,7 +6,16 @@ const helmet = require('helmet')
 const app = express()
 const WebSocket = require('ws');
 const mqtt = require('mqtt');
+const crypto = require('crypto');
 const port = 3000
+
+const mqttConfig = require('./protobuf/mqtt_config_proto.js');
+const { LRUCache } = require('lru-cache')
+
+const cache = new LRUCache({
+    max: 500,               // 最大缓存项数
+    ttl: 1000 * 60 * 60,    // 1小时过期时间(毫秒)
+});
 
 // 设置静态文件目录
 app.use(express.static(path.join(__dirname, 'public')));
@@ -25,6 +34,51 @@ const activeConnections = new Map();
 // 路由
 app.get('/', (req, res) => {
     res.send('Hello World!')
+})
+
+app.post('/api/mqtt/config/encode', (req, res) => {
+    const jsonData = req.body;
+
+    mqttConfig.encode(jsonData).then(buffer => {
+        res.json({ success: true, data: buffer.toString("base64") });
+    }).catch(err => {
+        res.status(500).json({
+            error: true,
+            message: err.message
+        });
+    })
+})
+
+app.post('/api/mqtt/config/decode', (req, res) => {
+    const { base64String } = req.body;
+    buffer = Buffer.from(base64String, 'base64');
+
+    mqttConfig.decode(buffer).then(jsonData => {
+        res.json({ success: true, data: jsonData });
+    }).catch(err => {
+        res.status(500).json({
+            error: true,
+            message: err.message
+        });
+    })
+})
+
+app.post('/api/mqtt/config/cache', (req, res) => {
+    const jsonData = req.body;
+
+    const str = JSON.stringify(jsonData);
+    if (str.length > 4096) {
+        str = str.substring(0, 4096);
+    }
+    const key = crypto.createHash('md5').update(str).digest('hex');
+    cache.set(key, jsonData);
+
+    res.json({ success: true, data: key, expired: new Date(Date.now() + 3600 * 1000) });
+})
+
+app.get('/api/mqtt/config/cache', (req, res) => {
+    const { key } = req.query;
+    res.json({ success: true, data: cache.get(key) });
 })
 
 // HTTP端点 - 动态配置MQTT
