@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>MQTT over WebSocket</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        textarea,
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 8px 15px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .message {
+            margin-bottom: 5px;
+            padding: 5px;
+            background: #f9f9f9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>MQTT over WebSocket</h1>
+
+        <div class="section">
+            <h2>1. WebSocket Connection</h2>
+            <button id="connectWs">Connect WebSocket</button>
+            <button id="disconnectWs" disabled>Disconnect WebSocket</button>
+            <div id="wsStatus">Status: Disconnected</div>
+        </div>
+
+        <div class="section">
+            <h2>2. MQTT Configuration</h2>
+            <input type="text" id="mqttHost" placeholder="MQTT Broker URL (e.g. mqtt://test.mosquitto.org)"
+                value="mqtt://test.mosquitto.org">
+            <input type="number" id="mqttPort" placeholder="Port (default 1883)" value="1883">
+            <input type="text" id="mqttUsername" placeholder="Username (optional)">
+            <input type="password" id="mqttPassword" placeholder="Password (optional)">
+            <button id="connectMqtt" disabled>Connect MQTT</button>
+            <button id="disconnectMqtt" disabled>Disconnect MQTT</button>
+            <div id="mqttStatus">Status: Disconnected</div>
+        </div>
+
+        <div class="section">
+            <h2>3. Subscribe to Topic</h2>
+            <input type="text" id="subscribeTopic" placeholder="Topic to subscribe (e.g. test/topic)"
+                value="test/topic">
+            <button id="subscribeBtn" disabled>Subscribe</button>
+            <button id="unsubscribeBtn" disabled>Unsubscribe</button>
+        </div>
+
+        <div class="section">
+            <h2>4. Publish Message</h2>
+            <input type="text" id="publishTopic" placeholder="Topic to publish" value="test/topic">
+            <textarea id="publishMessage" placeholder="Message to publish"></textarea>
+            <button id="publishBtn" disabled>Publish</button>
+        </div>
+
+        <div class="section">
+            <h2>Messages</h2>
+            <div id="messages"></div>
+            <button id="messagesClearBtn" disabled>Clear</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        // let connectionId = null;
+        let connectionId = Math.random().toString(36).substr(2, 9);
+
+        // DOM elements
+        const connectWsBtn = document.getElementById('connectWs');
+        const disconnectWsBtn = document.getElementById('disconnectWs');
+        const wsStatus = document.getElementById('wsStatus');
+
+        const connectMqttBtn = document.getElementById('connectMqtt');
+        const disconnectMqttBtn = document.getElementById('disconnectMqtt');
+        const mqttStatus = document.getElementById('mqttStatus');
+
+        const subscribeBtn = document.getElementById('subscribeBtn');
+        const unsubscribeBtn = document.getElementById('unsubscribeBtn');
+        const publishBtn = document.getElementById('publishBtn');
+
+        const messagesDiv = document.getElementById('messages');
+        const messagesClearBtn = document.getElementById('messagesClearBtn');
+
+        // WebSocket connection
+        connectWsBtn.addEventListener('click', () => {
+            ws = new WebSocket(`ws://${window.location.hostname}:3000?connid=${connectionId}&seckey=${Date.now().toString()}`);
+
+            ws.onopen = () => {
+                wsStatus.textContent = 'Status: Connected';
+                connectWsBtn.disabled = true;
+                disconnectWsBtn.disabled = false;
+                connectMqttBtn.disabled = false;
+                addMessage('WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                wsStatus.textContent = 'Status: Disconnected';
+                connectWsBtn.disabled = false;
+                disconnectWsBtn.disabled = true;
+                connectMqttBtn.disabled = true;
+                disconnectMqttBtn.disabled = true;
+                subscribeBtn.disabled = true;
+                unsubscribeBtn.disabled = true;
+                publishBtn.disabled = true;
+                addMessage('WebSocket disconnected');
+                mqttStatus.textContent = ``;
+            };
+
+            ws.onerror = (err) => {
+                addMessage(`WebSocket error: ${err.message}`);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleServerMessage(data);
+                } catch (err) {
+                    addMessage(`Error parsing message: ${err.message}`);
+                }
+            };
+        });
+
+        disconnectWsBtn.addEventListener('click', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+
+        // MQTT connection
+        connectMqttBtn.addEventListener('click', () => {
+            const mqttConfig = {
+                host: document.getElementById('mqttHost').value,
+                port: document.getElementById('mqttPort').value || 1883,
+                username: document.getElementById('mqttUsername').value || undefined,
+                password: document.getElementById('mqttPassword').value || undefined
+            };
+
+            fetch('/api/mqtt/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ connectionId, mqttConfig })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        connectMqttBtn.disabled = true;
+                        disconnectMqttBtn.disabled = false;
+                        subscribeBtn.disabled = false;
+                        publishBtn.disabled = false;
+                        addMessage('MQTT connection requested');
+                    } else {
+                        addMessage(`MQTT connection failed: ${data.error}`);
+                    }
+                })
+                .catch(err => {
+                    addMessage(`Error: ${err.message}`);
+                });
+        });
+
+        disconnectMqttBtn.addEventListener('click', () => {
+            if (ws) {
+                ws.send(JSON.stringify({ action: 'disconnect' }));
+            }
+        });
+
+        // Subscribe/unsubscribe
+        subscribeBtn.addEventListener('click', () => {
+            const topic = document.getElementById('subscribeTopic').value;
+            if (ws && topic) {
+                ws.send(JSON.stringify({ action: 'subscribe', topic }));
+                addMessage(`Subscribing to ${topic}`);
+            }
+        });
+
+        unsubscribeBtn.addEventListener('click', () => {
+            const topic = document.getElementById('subscribeTopic').value;
+            if (ws && topic) {
+                ws.send(JSON.stringify({ action: 'unsubscribe', topic }));
+                addMessage(`Unsubscribing from ${topic}`);
+            }
+        });
+
+        // Publish
+        publishBtn.addEventListener('click', () => {
+            const topic = document.getElementById('publishTopic').value;
+            const message = document.getElementById('publishMessage').value;
+            if (ws && topic && message) {
+                ws.send(JSON.stringify({ action: 'publish', topic, message }));
+                addMessage(`Published to ${topic}: ${message}`);
+            }
+        });
+
+        // Messages Clear
+        messagesClearBtn.addEventListener('click', () => {
+            console.info('1111111111')
+            clearMessages();
+        });
+
+        // Handle server messages
+        function handleServerMessage(data) {
+            switch (data.type) {
+                case 'mqtt-status':
+                    mqttStatus.textContent = `Status: ${data.status}`;
+                    addMessage(`MQTT ${data.status}`);
+                    break;
+
+                case 'mqtt-subscribed':
+                    addMessage(`Subscribed to ${data.topic}`);
+                    unsubscribeBtn.disabled = false;
+                    break;
+
+                case 'mqtt-message':
+                    addMessage(`[${data.topic}] ${data.message}`, 'incoming');
+                    break;
+
+                case 'mqtt-error':
+                    addMessage(`Error: ${data.error}`, 'error');
+                    break;
+
+                default:
+                    addMessage(`Unknown message type: ${data.type}`);
+            }
+        }
+
+        // Add message to UI
+        function addMessage(text, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            messagesClearBtn.disabled = false;
+        }
+
+        // Clear message from UI
+        function clearMessages() {
+            console.info('22222222222')
+            while (messagesDiv.firstChild) {
+                messagesDiv.removeChild(messagesDiv.firstChild);
+            }
+            messagesClearBtn.disabled = true;
+        }
+    </script>
+</body>
+
+</html>
